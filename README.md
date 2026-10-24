@@ -12,7 +12,11 @@ Foydalanuvchi botga oddiy suhbatdagidek ovozli yoki matnli xabar yuboradi. Bot x
 
 ## Kirish cheklovi
 
-`ALLOWED_CHAT_IDS=8207311790` — bot faqat shu chatga javob beradi. Boshqalarning xabarlari e’tiborsiz qoldiriladi va bazaga yozilmaydi; cheklovdan oldin yaratilgan begona yozuvlarga eslatma yuborilmaydi.
+- **Asosiy foydalanuvchi** — `OWNER_CHAT_ID` (standart `1454531719`). Botga kim kirishini u hal qiladi.
+- Ruxsati yo‘q odam `/start` bossa, so‘rov saqlanadi va unga «so‘rovingiz yuborildi» deb javob beriladi; boshqa xabarlari e’tiborsiz qoldiriladi va bazaga yozilmaydi.
+- Asosiy foydalanuvchida `/settings` → **«📥 Yangi so‘rovlar (N)»**: `/start` bosgan hamma (avval ruxsat kutayotganlar) va har biriga «✅ Ruxsat berish». Ruxsat berilganda odamga «Sizga ruxsat berildi, /start ni bosing» xabari boradi.
+- `ALLOWED_CHAT_IDS` — qo‘shimcha doimiy ruxsat (vergul bilan). `OWNER_CHAT_ID=0` va `ALLOWED_CHAT_IDS` bo‘sh bo‘lsa — bot hammaga ochiq.
+- Ruxsati yo‘qlarga eslatma va moliyaviy ogohlantirish yuborilmaydi. Funksiya qo‘shilganda botdan foydalanib bo‘lganlar avtomatik ruxsat oladi.
 
 ## Arxitektura
 

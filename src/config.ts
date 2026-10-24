@@ -75,6 +75,9 @@ const EnvSchema = z.object({
   DEFAULT_TIMEZONE: z.string().default("Asia/Tashkent"),
   DEFAULT_CURRENCY: z.string().default("UZS"),
   /// Bo'sh — hammaga ochiq. Aks holda faqat shu chat/foydalanuvchi ID'lari (vergul bilan)
+  /// Asosiy foydalanuvchi: botga kim kirishini u hal qiladi (/settings → «Yangi so'rovlar»). 0 — o'chirilgan (faqat ALLOWED_CHAT_IDS)
+  OWNER_CHAT_ID: int(1454531719),
+  /// Qo'shimcha doimiy ruxsat (vergul bilan). OWNER_CHAT_ID=0 va bu bo'sh bo'lsa — hammaga ochiq
   ALLOWED_CHAT_IDS: z
     .string()
     .optional()

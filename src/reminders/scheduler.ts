@@ -8,7 +8,7 @@ import { t } from "../lib/i18n.ts";
 import { nextOccurrence, type Recurrence } from "../lib/time.ts";
 import { logger, safeError } from "../logger.ts";
 import { catLabel, fillTemplate, fmt } from "../core/format.ts";
-import { isChatAllowed } from "../lib/access.ts";
+import { hasAccess } from "../lib/access.ts";
 
 interface Claimed {
   id: string;
@@ -124,7 +124,7 @@ export class ReminderScheduler {
     const lateMs = now.getTime() - rem.fireAt.getTime();
 
     // Bloklangan, ruxsat etilmagan foydalanuvchi yoki o'chirilgan eslatmalar
-    if (user.blockedAt || !user.remindersEnabled || !isChatAllowed(cfg, Number(user.chatId))) {
+    if (user.blockedAt || !user.remindersEnabled || !(await hasAccess(this.deps, user.telegramUserId, user.chatId))) {
       await this.finalize(rem, c, now, { skipped: true, reason: user.blockedAt ? "user_blocked" : user.remindersEnabled ? "chat_not_allowed" : "reminders_disabled" });
       return false;
     }

@@ -20,6 +20,7 @@ export default defineConfig({
       REDIS_URL: "redis://localhost:6379",
       // .env'dagi cheklov testlarga ta'sir qilmasin (alohida test bor)
       ALLOWED_CHAT_IDS: "",
+      OWNER_CHAT_ID: "0",
       STORAGE_DIR: "./tmp/test-storage",
       TMP_DIR: "./tmp/test-tmp",
     },

@@ -381,3 +381,22 @@ model FinanceSnapshot {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+enum AccessStatus {
+  pending
+  approved
+}
+
+/// Botdan foydalanish so'rovlari: /start bosgan ruxsatsiz foydalanuvchilar. Asosiy foydalanuvchi (OWNER_CHAT_ID) ruxsat beradi.
+model AccessRequest {
+  telegramUserId BigInt       @id
+  chatId         BigInt
+  firstName      String?
+  username       String?
+  language       Language     @default(uz)
+  status         AccessStatus @default(pending)
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  approvedAt     DateTime?    @db.Timestamptz(3)
+
+  @@index([status, createdAt])
+}

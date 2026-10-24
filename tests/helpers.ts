@@ -199,7 +199,7 @@ export function testDb(): Db {
 
 export async function resetDb(): Promise<void> {
   await testDb().$executeRawUnsafe(
-    `TRUNCATE "FinanceSnapshot","Transaction","DeliveryAttempt","Reminder","Presentation","Task","Note","InboundMessage","ConversationState","UsageCounter","ProcessedUpdate","AiUsageLog","User" CASCADE`,
+    `TRUNCATE "FinanceSnapshot","Transaction","DeliveryAttempt","Reminder","Presentation","Task","Note","InboundMessage","ConversationState","UsageCounter","ProcessedUpdate","AiUsageLog","AccessRequest","User" CASCADE`,
   );
 }
 

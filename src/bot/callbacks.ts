@@ -8,7 +8,8 @@ import { financeView, itemCard } from "../core/queries.ts";
 import { loadState, setPending, setRetry } from "../core/state.ts";
 import { cancelRemindersFor, createReminder, rescheduleReminder } from "../reminders/service.ts";
 import type { BotContext } from "./bot.ts";
-import { deleteUserData, settingsView } from "./settings.ts";
+import { accessView, deleteUserData, settingsView } from "./settings.ts";
+import { isOwner } from "../lib/access.ts";
 import { handleVoiceFile } from "./voice.ts";
 
 /**
@@ -198,6 +199,28 @@ export async function handleCallback(deps: Deps, ctx: BotContext): Promise<void>
           reply = await processText(deps, { user, text: retry.text ?? "", inboundMessageId: inbound?.userId === user.id ? inbound.id : null, messageId: retry.messageId, updateId: retry.updateId, kind: retry.kind });
         }
         await deps.messenger.editLong(chatId, msg?.message_id, reply.text, { keyboard: reply.keyboard });
+        return;
+      }
+
+      // Botga kirish so'rovlari — faqat asosiy foydalanuvchi: ad:list, ad:ok:<telegramUserId>
+      case "ad": {
+        if (!isOwner(deps.cfg, user.telegramUserId)) return stale();
+        if (a1 === "ok") {
+          const req = await deps.db.accessRequest.findUnique({ where: { telegramUserId: BigInt(a2) } });
+          if (!req) return stale();
+          let note = "";
+          if (req.status !== "approved") {
+            await deps.db.accessRequest.update({ where: { telegramUserId: req.telegramUserId }, data: { status: "approved", approvedAt: deps.clock() } });
+            const who = req.firstName || (req.username ? `@${req.username}` : String(req.telegramUserId));
+            const sent = await deps.messenger.send(req.chatId, t(req.language).access.granted).then(() => true, () => false);
+            note = sent ? L.access.approvedOk(who) : L.access.approvedNoMsg(who);
+          }
+          await ctx.answerCallbackQuery(note ? { text: note.slice(0, 190) } : undefined);
+        } else if (a1 === "list") await ctx.answerCallbackQuery();
+        else return stale();
+        const v = await accessView(deps, user);
+        if (a1 === "ok" && msg) await deps.messenger.edit(chatId, msg.message_id, v.text, { keyboard: v.keyboard }).catch(() => undefined);
+        else await deps.messenger.send(chatId, v.text, { keyboard: v.keyboard });
         return;
       }
 

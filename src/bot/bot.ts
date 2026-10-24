@@ -13,7 +13,7 @@ import { loadState, setPending } from "../core/state.ts";
 import { handleCallback } from "./callbacks.ts";
 import { settingsView } from "./settings.ts";
 import { handleVoiceFile } from "./voice.ts";
-import { isChatAllowed } from "../lib/access.ts";
+import { hasAccess } from "../lib/access.ts";
 import { splitText } from "../messenger.ts";
 import { financeView } from "../core/queries.ts";
 
@@ -34,12 +34,16 @@ export function createBot(deps: Deps, token: string, opts: { botInfo?: UserFromG
   // Bir chat ichidagi update'lar ketma-ket — suhbat holati poygasiz (runner/webhook parallel ishlaganda)
   if (opts.sequential) bot.use(sequentialize((ctx) => ctx.chat?.id.toString() ?? ctx.from?.id.toString()));
 
-  // Faqat ruxsat berilgan chat(lar) — boshqalar e'tiborsiz qoldiriladi va bazaga yozilmaydi
+  // Faqat ruxsat berilganlar. Boshqalar e'tiborsiz qoldiriladi va bazaga yozilmaydi;
+  // shaxsiy chatda /start bossa — asosiy foydalanuvchiga so'rov sifatida saqlanadi
   bot.use(async (ctx, next) => {
     const chatId = ctx.chat?.id ?? ctx.callbackQuery?.message?.chat.id;
-    if (!isChatAllowed(deps.cfg, chatId, ctx.from?.id)) {
+    if (!(await hasAccess(deps, chatId, ctx.from?.id))) {
       logger.info({ chatId }, "ruxsat etilmagan chat — e'tiborsiz");
       if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => undefined);
+      else if (deps.cfg.OWNER_CHAT_ID && ctx.chat?.type === "private" && ctx.from && !ctx.from.is_bot && /^\/start(@\w+)?(\s|$)/.test(ctx.message?.text ?? "")) {
+        await requestAccess(deps, ctx);
+      }
       return;
     }
     await next();
@@ -174,6 +178,18 @@ function menuAction(text: string): string | null {
     for (const [key, label] of Object.entries(M)) if (label === text) return key;
   }
   return null;
+}
+
+/** Ruxsatsiz foydalanuvchining /start'i — so'rov (qayta bossa, ma'lumoti yangilanadi). */
+async function requestAccess(deps: Deps, ctx: Context): Promise<void> {
+  const from = ctx.from!;
+  const language = from.language_code?.startsWith("ru") ? "ru" : "uz";
+  await deps.db.accessRequest.upsert({
+    where: { telegramUserId: BigInt(from.id) },
+    create: { telegramUserId: BigInt(from.id), chatId: BigInt(ctx.chat!.id), firstName: from.first_name, username: from.username, language },
+    update: { chatId: BigInt(ctx.chat!.id), firstName: from.first_name, username: from.username },
+  });
+  await ctx.reply(t(language).access.requested).catch(() => undefined);
 }
 
 async function privateOnly(ctx: Context, next: NextFunction): Promise<void> {

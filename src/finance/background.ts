@@ -4,7 +4,7 @@ import type { FinanceSnapshot, Prisma, User } from "../db.ts";
 import { t } from "../lib/i18n.ts";
 import { consumeQuota } from "../lib/usage.ts";
 import { logger, safeError } from "../logger.ts";
-import { isChatAllowed } from "../lib/access.ts";
+import { hasAccess } from "../lib/access.ts";
 import { computeStats, money, type FinanceStats } from "./analytics.ts";
 
 /**
@@ -99,7 +99,7 @@ export class FinanceAnalyzer {
     const users = await this.deps.db.user.findMany({ where: { blockedAt: null, transactions: { some: { occurredAt: { gte: since } } } }, take: 100 });
     let n = 0;
     for (const user of users) {
-      if (!isChatAllowed(this.deps.cfg, Number(user.chatId))) continue;
+      if (!(await hasAccess(this.deps, user.telegramUserId, user.chatId))) continue;
       try {
         await ensureSnapshot(this.deps, user, { alert: true });
         n++;
