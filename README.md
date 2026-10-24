@@ -79,6 +79,13 @@ npm run build && npm start   # yoki: npm run dev
 ### Webhook rejimi
 `BOT_MODE=webhook`, `WEBHOOK_URL=https://domen/telegram/webhook`, `WEBHOOK_SECRET=<tasodifiy>`. Ilova `WEBHOOK_PORT`da tinglaydi, `X-Telegram-Bot-Api-Secret-Token` sarlavhasini tekshiradi (grammY `secretToken`), `/health` endpoint bor.
 
+### Uptime monitoring (health)
+Ilova har ikki rejimda `WEBHOOK_PORT` (8080) da HTTP ochadi:
+- `GET /health` — jarayon tirik (`200 ok`);
+- `GET /health/ready` — baza, Redis, eslatmalar scheduler'i (oxirgi sikl ≤ 3 interval + 30 s) va Telegram polling tekshiriladi; biror narsa ishlamasa **503**. Javob: `{"status":"ok","uptimeSec":…,"checks":{"database":{"ok":true,"ms":136},…}}` — sir yo'q.
+
+Uptime monitorga (UptimeRobot, Better Stack…) `https://<domen yoki IP>:8080/health/ready` qo'yiladi, kutilgan kod 200. Docker Compose'da shu endpoint `healthcheck` sifatida ham ishlatiladi.
+
 ### Masshtablash
 `APP_ROLE=bot` (bitta nusxa — polling'da Telegram faqat bittasiga ruxsat beradi) va `APP_ROLE=worker` (bir nechta nusxa bo‘lishi mumkin: eslatmalar `FOR UPDATE SKIP LOCKED` bilan, prezentatsiyalar BullMQ bilan taqsimlanadi).
 
@@ -135,7 +142,7 @@ Aniqlashtirish faqat natijaga ta’sir qilganda: "soat sakkiz" (ertalab/kechquru
 ## Testlar
 
 ```bash
-npm test            # 92 test, alohida baza: nigina_test (TEST_DATABASE_URL bilan o'zgartirish mumkin)
+npm test            # 96 test, alohida baza: nigina_test (TEST_DATABASE_URL bilan o'zgartirish mumkin)
 npm run typecheck
 ```
 

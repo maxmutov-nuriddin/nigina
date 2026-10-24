@@ -111,3 +111,10 @@ describe("Zaxira provayder (Gemini → Groq)", () => {
     expect(createAiProviders(cfg({ GROQ_API_KEY: "q", GEMINI_API_KEY: "" })).ai.name).toBe("groq");
   });
 });
+
+describe("Config", () => {
+  it("platforma bergan PORT (Render) WEBHOOK_PORT'dan ustun", () => {
+    expect(loadConfig({ ...process.env, PORT: "10000", WEBHOOK_PORT: "8080" }).WEBHOOK_PORT).toBe(10000);
+    expect(loadConfig({ ...process.env, PORT: undefined, WEBHOOK_PORT: "8080" }).WEBHOOK_PORT).toBe(8080);
+  });
+});

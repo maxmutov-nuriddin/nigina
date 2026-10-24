@@ -34,7 +34,8 @@ services:
       target: migrate
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://nigina:${POSTGRES_PASSWORD:-nigina}@postgres:5432/nigina?schema=public
+      # .env'da DATABASE_URL bo'lsa (masalan Supabase) — o'sha, bo'lmasa shu compose'dagi postgres
+      DATABASE_URL: ${DATABASE_URL:-postgresql://nigina:${POSTGRES_PASSWORD:-nigina}@postgres:5432/nigina?schema=public}
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,15 +47,22 @@ services:
       target: runtime
     env_file: .env
     environment:
-      DATABASE_URL: postgresql://nigina:${POSTGRES_PASSWORD:-nigina}@postgres:5432/nigina?schema=public
+      # .env'da DATABASE_URL bo'lsa (masalan Supabase) — o'sha, bo'lmasa shu compose'dagi postgres
+      DATABASE_URL: ${DATABASE_URL:-postgresql://nigina:${POSTGRES_PASSWORD:-nigina}@postgres:5432/nigina?schema=public}
       REDIS_URL: redis://redis:6379
       STORAGE_DIR: /app/storage
       TMP_DIR: /app/tmp
     volumes:
       - storage:/app/storage
-    # Webhook rejimida (BOT_MODE=webhook) port ochiladi:
-    # ports:
-    #   - "8080:8080"
+    # /health, /health/ready (uptime monitor) va webhook rejimida /telegram/webhook
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     depends_on:
       migrate:
         condition: service_completed_successfully

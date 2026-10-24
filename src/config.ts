@@ -27,7 +27,10 @@ const EnvSchema = z.object({
   BOT_MODE: z.enum(["polling", "webhook"]).default("polling"),
   WEBHOOK_URL: z.string().default(""),
   WEBHOOK_SECRET: z.string().default(""),
+  /// HTTP port: /health, /health/ready (uptime monitor) va webhook rejimida /telegram/webhook
   WEBHOOK_PORT: int(8080),
+  /// Polling rejimida ham HTTP health server ochilsinmi
+  HTTP_ENABLED: bool(true),
 
   GROQ_API_KEY: z.string().default(""),
   GROQ_TRANSCRIPTION_MODEL: z.string().default("whisper-large-v3"),
@@ -114,7 +117,8 @@ const EnvSchema = z.object({
 export type Config = z.infer<typeof EnvSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = EnvSchema.safeParse(env);
+  // Render/Heroku kabi platformalar portni PORT orqali beradi — u ustun
+  const parsed = EnvSchema.safeParse(env.PORT ? { ...env, WEBHOOK_PORT: env.PORT } : env);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Environment xato: ${issues}`);

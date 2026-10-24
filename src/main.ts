@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { Api, webhookCallback } from "grammy";
 import { run } from "@grammyjs/runner";
 import { autoRetry } from "@grammyjs/auto-retry";
@@ -16,6 +16,7 @@ import { createPresentationQueue, createRedis, startPresentationWorker } from ".
 import { sweepQueued } from "./presentations/generate.ts";
 import { runMaintenance } from "./maintenance.ts";
 import { FinanceAnalyzer } from "./finance/background.ts";
+import { handleHealth, type HealthDeps } from "./health.ts";
 
 async function main(): Promise<void> {
   if (!config.TELEGRAM_BOT_TOKEN) throw new Error("TELEGRAM_BOT_TOKEN sozlanmagan (.env)");
@@ -49,10 +50,13 @@ async function main(): Promise<void> {
 
   const stops: Array<() => Promise<unknown>> = [];
   const role = config.APP_ROLE;
+  const health: HealthDeps = { db, redis, schedulerIntervalMs: config.SCHEDULER_INTERVAL_MS, startedAt: new Date() };
+  let webhookHandle: ((req: IncomingMessage, res: ServerResponse) => unknown) | null = null;
 
   if (role === "all" || role === "worker") {
     const scheduler = new ReminderScheduler(deps);
     scheduler.start();
+    health.scheduler = scheduler;
     stops.push(() => scheduler.stop());
 
     const worker = startPresentationWorker(deps, createRedis(config));
@@ -89,22 +93,31 @@ async function main(): Promise<void> {
     const allowed_updates = ["message", "callback_query"] as const;
     if (config.BOT_MODE === "webhook") {
       if (!config.WEBHOOK_URL || !config.WEBHOOK_SECRET) throw new Error("Webhook rejimi uchun WEBHOOK_URL va WEBHOOK_SECRET kerak");
-      const handle = webhookCallback(bot, "http", { secretToken: config.WEBHOOK_SECRET, onTimeout: "return", timeoutMilliseconds: 55_000 });
-      const server = createServer((req, res) => {
-        if (req.url === "/health") return void res.writeHead(200).end("ok");
-        if (req.method === "POST" && req.url === "/telegram/webhook") return void handle(req, res);
-        res.writeHead(404).end();
-      });
-      server.listen(config.WEBHOOK_PORT);
+      webhookHandle = webhookCallback(bot, "http", { secretToken: config.WEBHOOK_SECRET, onTimeout: "return", timeoutMilliseconds: 55_000 });
       await bot.api.setWebhook(config.WEBHOOK_URL, { secret_token: config.WEBHOOK_SECRET, allowed_updates: [...allowed_updates] });
-      logger.info({ port: config.WEBHOOK_PORT }, "Webhook rejimi");
-      stops.push(() => new Promise((r) => server.close(r)));
+      logger.info("Webhook rejimi");
     } else {
       await bot.api.deleteWebhook();
       const runner = run(bot, { runner: { fetch: { allowed_updates: [...allowed_updates] } } });
+      health.pollingRunning = () => runner.isRunning();
       logger.info({ username: bot.botInfo.username }, "Polling rejimi");
       stops.push(() => runner.stop());
     }
+  }
+
+  // HTTP: uptime monitor uchun /health, /health/ready; webhook rejimida — Telegram webhook ham
+  if (config.HTTP_ENABLED || webhookHandle) {
+    const server = createServer((req, res) => {
+      if (webhookHandle && req.method === "POST" && req.url === "/telegram/webhook") return void webhookHandle(req, res);
+      void handleHealth(req, res, health)
+        .then((handled) => {
+          if (!handled) res.writeHead(404).end();
+        })
+        .catch(() => res.writeHead(500).end());
+    });
+    server.listen(config.WEBHOOK_PORT);
+    logger.info({ port: config.WEBHOOK_PORT }, "HTTP: /health, /health/ready");
+    stops.unshift(() => new Promise((r) => server.close(r)));
   }
 
   stops.push(() => queue.close(), () => redis.quit(), () => db.$disconnect());

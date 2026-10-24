@@ -36,6 +36,8 @@ export class ReminderScheduler {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   readonly workerId: string;
+  /** Oxirgi muvaffaqiyatli sikl vaqti — /health/ready uchun */
+  lastTickOkAt: Date | null = null;
 
   constructor(private deps: Deps, workerId?: string) {
     this.workerId = workerId ?? `${hostname()}-${process.pid}-${randomBytes(3).toString("hex")}`;
@@ -59,6 +61,7 @@ export class ReminderScheduler {
     this.running = true;
     try {
       await this.tick();
+      this.lastTickOkAt = new Date();
     } catch (err) {
       logger.error({ err: safeError(err) }, "scheduler tick xatosi");
     } finally {
