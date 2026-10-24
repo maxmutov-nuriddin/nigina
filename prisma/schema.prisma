@@ -1,0 +1,383 @@
+// Nigina — ovoz bilan boshqariladigan vazifa yordamchisi.
+// Barcha vaqtlar UTC'da saqlanadi (timestamptz). Foydalanuvchiga uning timezone'ida ko'rsatiladi.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Language {
+  uz
+  ru
+}
+
+enum Category {
+  work
+  home
+  study
+  personal
+  other
+}
+
+enum TaskStatus {
+  active
+  done
+  cancelled
+}
+
+enum NoteKind {
+  general
+  absence
+}
+
+enum NoteStatus {
+  active
+  cancelled
+}
+
+enum ReminderStatus {
+  scheduled
+  sending
+  sent
+  cancelled
+  failed
+  missed
+}
+
+enum ReminderAnchor {
+  absolute
+  event
+  /// Muddatga nisbatan avtomatik eslatma (offsetMinutes = muddatdan necha daqiqa oldin)
+  due
+}
+
+enum PresentationStatus {
+  queued
+  generating
+  ready
+  failed
+}
+
+enum DeliveryStatus {
+  pending
+  sent
+  failed
+  uncertain
+}
+
+enum UpdateStatus {
+  processing
+  done
+  failed
+}
+
+model User {
+  id                  String    @id @default(cuid())
+  telegramUserId      BigInt    @unique
+  chatId              BigInt
+  firstName           String?
+  username            String?
+  language            Language  @default(uz)
+  timezone            String    @default("Asia/Tashkent")
+  /// Sana aytilib, vaqt aytilmagan eslatmalar uchun taklif qilinadigan vaqt (HH:mm)
+  defaultReminderTime String    @default("09:00")
+  remindersEnabled    Boolean   @default(true)
+  /// Moliyaviy hisob-kitoblar valyutasi (ISO 4217)
+  currency            String    @default("UZS")
+  /// Foydalanuvchi botni bloklagan bo'lsa (403) — eslatmalar yuborilmaydi
+  blockedAt           DateTime? @db.Timestamptz(3)
+  createdAt           DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @db.Timestamptz(3)
+
+  tasks         Task[]
+  notes         Note[]
+  reminders     Reminder[]
+  presentations Presentation[]
+  conversation  ConversationState?
+  messages      InboundMessage[]
+  deliveries    DeliveryAttempt[]
+  usage         UsageCounter[]
+  transactions  Transaction[]
+  finance       FinanceSnapshot?
+}
+
+/// Kelgan xabar (matn yoki ovoz). Transkripsiya shu yerda saqlanadi.
+model InboundMessage {
+  id          String    @id @default(cuid())
+  userId      String
+  updateId    BigInt    @unique
+  messageId   Int
+  kind        String // text | voice | audio | video_note
+  transcript  String?
+  durationSec Int?
+  /// Amallar bazaga yozilgan payt — takroriy qayta ishlashdan himoya (atomar shart)
+  processedAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks         Task[]
+  notes         Note[]
+  presentations Presentation[]
+  transactions  Transaction[]
+
+  @@index([userId, createdAt])
+}
+
+model Task {
+  id               String     @id @default(cuid())
+  userId           String
+  category         Category   @default(other)
+  title            String
+  description      String?
+  personName       String?
+  status           TaskStatus @default(active)
+  dueAt            DateTime?  @db.Timestamptz(3)
+  dueAllDay        Boolean    @default(false)
+  eventAt          DateTime?  @db.Timestamptz(3)
+  completedAt      DateTime?  @db.Timestamptz(3)
+  inboundMessageId String?
+  sourceMessageId  Int?
+  actionIndex      Int?
+  createdAt        DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime   @updatedAt @db.Timestamptz(3)
+
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inbound       InboundMessage? @relation(fields: [inboundMessageId], references: [id], onDelete: SetNull)
+  reminders     Reminder[]
+  presentations Presentation[]
+
+  @@unique([inboundMessageId, actionIndex])
+  @@index([userId, status])
+  @@index([userId, dueAt])
+  @@index([userId, eventAt])
+}
+
+model Note {
+  id               String     @id @default(cuid())
+  userId           String
+  category         Category   @default(other)
+  kind             NoteKind   @default(general)
+  title            String
+  body             String?
+  personName       String?
+  eventAt          DateTime?  @db.Timestamptz(3)
+  status           NoteStatus @default(active)
+  statusReason     String?
+  inboundMessageId String?
+  sourceMessageId  Int?
+  actionIndex      Int?
+  createdAt        DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime   @updatedAt @db.Timestamptz(3)
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inbound   InboundMessage? @relation(fields: [inboundMessageId], references: [id], onDelete: SetNull)
+  reminders Reminder[]
+
+  @@unique([inboundMessageId, actionIndex])
+  @@index([userId, status])
+  @@index([userId, personName])
+}
+
+model Reminder {
+  id             String         @id @default(cuid())
+  userId         String
+  taskId         String?
+  noteId         String?
+  presentationId String?
+  /// Eslatma matni. {event_day}, {event_time}, {due_weekday} o'rinbosarlari bo'lishi mumkin.
+  text           String
+  /// Rejalashtirilgan (asl) vaqt, UTC
+  fireAt         DateTime       @db.Timestamptz(3)
+  /// Keyingi yuborish urinishining vaqti (retry/backoff uchun), UTC
+  nextAttemptAt  DateTime       @db.Timestamptz(3)
+  status         ReminderStatus @default(scheduled)
+  anchor         ReminderAnchor @default(absolute)
+  /// anchor=event/due bo'lsa: voqea/muddatdan necha daqiqa oldin
+  offsetMinutes  Int?
+  /// { freq: "daily"|"weekly", interval: number, byWeekday: number[] (1=Du..7=Ya), time: "HH:mm" }
+  recurrence     Json?
+  /// Har bir o'zgarishda oshadi — eskirgan claim/tugmalarni aniqlash uchun
+  version        Int            @default(1)
+  attempts       Int            @default(0)
+  lockedUntil    DateTime?      @db.Timestamptz(3)
+  lockedBy       String?
+  lastError      String?
+  lastSentAt     DateTime?      @db.Timestamptz(3)
+  sentCount      Int            @default(0)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(3)
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task         Task?             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  note         Note?             @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  presentation Presentation?     @relation(fields: [presentationId], references: [id], onDelete: SetNull)
+  deliveries   DeliveryAttempt[]
+
+  @@index([status, nextAttemptAt])
+  @@index([userId, status])
+}
+
+model Presentation {
+  id               String             @id @default(cuid())
+  userId           String
+  taskId           String?
+  topic            String
+  language         String             @default("uz")
+  slideCount       Int                @default(10)
+  requirements     String?
+  status           PresentationStatus @default(queued)
+  stage            String?
+  error            String?
+  attempts         Int                @default(0)
+  outline          Json?
+  filePath         String?
+  fileName         String?
+  fileSize         Int?
+  telegramFileId   String?
+  statusChatId     BigInt?
+  statusMessageId  Int?
+  inboundMessageId String?
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime           @updatedAt @db.Timestamptz(3)
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task      Task?           @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  inbound   InboundMessage? @relation(fields: [inboundMessageId], references: [id], onDelete: SetNull)
+  reminders Reminder[]
+
+  @@index([userId, status])
+}
+
+/// Har bir foydalanuvchining suhbat holati: kutilayotgan aniqlashtirish va qisqa tarix.
+model ConversationState {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  /// { kind, actions, question, ... } — restartdan keyin ham saqlanadi
+  pending          Json?
+  pendingExpiresAt DateTime? @db.Timestamptz(3)
+  /// Qisqa suhbat tarixi (oxirgi bir necha almashinuv)
+  history          Json      @default("[]")
+  /// Oxirgi marta tilga olingan/yaratilgan yozuvlar ("uni", "oxirgisi")
+  recentItems      Json      @default("[]")
+  /// AI xatosidan keyin "Qayta urinish" uchun
+  retry            Json?
+  version          Int       @default(1)
+  updatedAt        DateTime  @updatedAt @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Telegram update idempotentligi
+model ProcessedUpdate {
+  updateId   BigInt       @id
+  userId     String?
+  status     UpdateStatus @default(processing)
+  startedAt  DateTime     @default(now()) @db.Timestamptz(3)
+  finishedAt DateTime?    @db.Timestamptz(3)
+
+  @@index([startedAt])
+}
+
+model DeliveryAttempt {
+  id                String         @id @default(cuid())
+  reminderId        String
+  userId            String
+  attemptNo         Int
+  reminderVersion   Int
+  status            DeliveryStatus @default(pending)
+  lateBySec         Int            @default(0)
+  telegramMessageId Int?
+  error             String?
+  workerId          String?
+  createdAt         DateTime       @default(now()) @db.Timestamptz(3)
+  finishedAt        DateTime?      @db.Timestamptz(3)
+
+  reminder Reminder @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([reminderId])
+}
+
+/// Kunlik foydalanish limitlari
+model UsageCounter {
+  userId String
+  day    String // YYYY-MM-DD (UTC)
+  kind   String // voice | ai | presentation
+  count  Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day, kind])
+}
+
+/// AI sarfi monitoringi — shaxsiy mazmunsiz (faqat metrikalar)
+model AiUsageLog {
+  id               String   @id @default(cuid())
+  userId           String?
+  kind             String
+  model            String
+  promptTokens     Int?
+  completionTokens Int?
+  audioSeconds     Float?
+  latencyMs        Int
+  ok               Boolean
+  errorCode        String?
+  /// groq | groq:analysis | gemini
+  provider         String?
+  /// Limit xatosida: provayder aytgan ochilish vaqti
+  retryUntil       DateTime? @db.Timestamptz(3)
+  /// Limit xatosida: day | minute
+  limitScope       String?
+  createdAt        DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([provider, createdAt])
+}
+
+enum TransactionKind {
+  expense
+  income
+}
+
+/// Moliyaviy yozuv: xarajat yoki daromad
+model Transaction {
+  id               String          @id @default(cuid())
+  userId           String
+  kind             TransactionKind
+  amount           Decimal         @db.Decimal(18, 2)
+  currency         String          @default("UZS")
+  category         String          @default("other")
+  description      String?
+  occurredAt       DateTime        @db.Timestamptz(3)
+  inboundMessageId String?
+  actionIndex      Int?
+  createdAt        DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime        @updatedAt @db.Timestamptz(3)
+
+  user    User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  inbound InboundMessage? @relation(fields: [inboundMessageId], references: [id], onDelete: SetNull)
+
+  @@unique([inboundMessageId, actionIndex])
+  @@index([userId, occurredAt])
+}
+
+/// Fondagi tahlil natijasi (har foydalanuvchi uchun oxirgi oy holati)
+model FinanceSnapshot {
+  userId     String    @id
+  month      String
+  stats      Json
+  insight    String?
+  insightAt  DateTime? @db.Timestamptz(3)
+  /// Tahlilga kirgan eng oxirgi tranzaksiya yozilgan vaqt
+  lastTxAt   DateTime? @db.Timestamptz(3)
+  computedAt DateTime  @db.Timestamptz(3)
+  /// Ogohlantirish yuborilgan holat: "loss" — shu oy uchun zarar haqida xabar berilgan
+  alertState String?
+  alertMonth String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

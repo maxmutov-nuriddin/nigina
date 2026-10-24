@@ -1,0 +1,68 @@
+# Lokal/serverda ishga tushirish: docker compose up -d --build
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: nigina
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nigina}
+      POSTGRES_DB: nigina
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nigina -d nigina"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # BullMQ talabi: kalitlar o'chirilmasin
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://nigina:${POSTGRES_PASSWORD:-nigina}@postgres:5432/nigina?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  bot:
+    build:
+      context: .
+      target: runtime
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://nigina:${POSTGRES_PASSWORD:-nigina}@postgres:5432/nigina?schema=public
+      REDIS_URL: redis://redis:6379
+      STORAGE_DIR: /app/storage
+      TMP_DIR: /app/tmp
+    volumes:
+      - storage:/app/storage
+    # Webhook rejimida (BOT_MODE=webhook) port ochiladi:
+    # ports:
+    #   - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  storage:
