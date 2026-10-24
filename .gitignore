@@ -2,6 +2,7 @@ node_modules
 dist
 .env
 .env.test
+.env.render
 /src/generated/prisma
 /storage
 /tmp

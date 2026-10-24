@@ -5,7 +5,8 @@ import { safeError } from "./logger.ts";
 
 export interface HealthDeps {
   db: Db;
-  redis: Redis;
+  /** Redis'siz rejimda null — tekshirilmaydi */
+  redis: Redis | null;
   /** Eslatmalar scheduler'i (worker roli) — oxirgi muvaffaqiyatli sikl */
   scheduler?: { lastTickOkAt: Date | null } | null;
   schedulerIntervalMs: number;
@@ -46,7 +47,11 @@ export async function handleHealth(req: IncomingMessage, res: ServerResponse, d:
   if (url !== "/health/ready") return false;
 
   const checks: Record<string, Check> = {};
-  [checks.database, checks.redis] = await Promise.all([timed(() => d.db.$queryRaw`SELECT 1`), timed(() => d.redis.ping())]);
+  checks.database = await timed(() => d.db.$queryRaw`SELECT 1`);
+  if (d.redis) {
+    const redis = d.redis;
+    checks.redis = await timed(() => redis.ping());
+  }
   if (d.scheduler) {
     // Sikl har SCHEDULER_INTERVAL_MS da; 3 ta sikl + 30 s ichida muvaffaqiyatli bo'lmasa — muammo
     const staleMs = d.schedulerIntervalMs * 3 + 30_000;

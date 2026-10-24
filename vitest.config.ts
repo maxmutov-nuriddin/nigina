@@ -17,6 +17,7 @@ export default defineConfig({
       GROQ_API_KEY: "",
       GROQ_ANALYSIS_API_KEY: "",
       GEMINI_API_KEY: "",
+      REDIS_URL: "redis://localhost:6379",
       // .env'dagi cheklov testlarga ta'sir qilmasin (alohida test bor)
       ALLOWED_CHAT_IDS: "",
       STORAGE_DIR: "./tmp/test-storage",

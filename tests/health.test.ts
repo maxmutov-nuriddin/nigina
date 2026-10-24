@@ -8,7 +8,7 @@ import { handleHealth, type HealthDeps } from "../src/health.ts";
 
 const cfg = loadConfig();
 const db = createDb();
-const redis = createRedis(cfg);
+const redis = createRedis({ ...cfg, REDIS_URL: cfg.REDIS_URL || "redis://localhost:6379" });
 const deps: HealthDeps = { db, redis, schedulerIntervalMs: 5_000, startedAt: new Date(), scheduler: { lastTickOkAt: new Date() }, pollingRunning: () => true };
 let server: Server;
 let base = "";

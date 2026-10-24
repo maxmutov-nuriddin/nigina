@@ -13,6 +13,7 @@ import type { Deps } from "./deps.ts";
 import { createBot } from "./bot/bot.ts";
 import { ReminderScheduler } from "./reminders/scheduler.ts";
 import { createPresentationQueue, createRedis, startPresentationWorker } from "./presentations/queue.ts";
+import { LocalPresentationQueue } from "./presentations/local-queue.ts";
 import { sweepQueued } from "./presentations/generate.ts";
 import { runMaintenance } from "./maintenance.ts";
 import { FinanceAnalyzer } from "./finance/background.ts";
@@ -23,8 +24,13 @@ async function main(): Promise<void> {
   if (!config.GROQ_API_KEY && !config.GEMINI_API_KEY) logger.warn("GROQ_API_KEY ham, GEMINI_API_KEY ham sozlanmagan — AI funksiyalari ishlamaydi, foydalanuvchiga xabar beriladi");
 
   const db = createDb();
-  const redis = createRedis(config);
-  const { queue, enqueue } = createPresentationQueue(redis);
+  // REDIS_URL bo'sh — prezentatsiya navbati jarayon ichida (bitta jarayon, Render kabi Redis'siz hosting uchun)
+  const redis = config.REDIS_URL ? createRedis(config) : null;
+  if (!redis && config.APP_ROLE !== "all") throw new Error("APP_ROLE=bot/worker alohida ishlaganda REDIS_URL kerak (navbat jarayonlar orasida bo'linadi)");
+  const localQueue = redis ? null : new LocalPresentationQueue(config.PRESENTATION_CONCURRENCY);
+  const bullQueue = redis ? createPresentationQueue(redis) : null;
+  const enqueue = bullQueue?.enqueue ?? localQueue!.enqueue;
+  if (!redis) logger.info("REDIS_URL yo'q — prezentatsiya navbati jarayon ichida");
   const { ai, analysisAi } = createAiProviders(config, usageRecorder(db));
   logger.info({ chat: ai.name }, "AI provayderlari");
   if (config.ALLOWED_CHAT_IDS.length) logger.info({ allowed: config.ALLOWED_CHAT_IDS.length }, "Bot faqat ruxsat berilgan chat(lar) uchun");
@@ -59,8 +65,13 @@ async function main(): Promise<void> {
     health.scheduler = scheduler;
     stops.push(() => scheduler.stop());
 
-    const worker = startPresentationWorker(deps, createRedis(config));
-    stops.push(() => worker.close());
+    if (localQueue) {
+      await localQueue.start(deps);
+      stops.push(() => localQueue.close());
+    } else {
+      const worker = startPresentationWorker(deps, createRedis(config));
+      stops.push(() => worker.close());
+    }
 
     const analyzer = new FinanceAnalyzer(deps);
     analyzer.start();
@@ -120,7 +131,8 @@ async function main(): Promise<void> {
     stops.unshift(() => new Promise((r) => server.close(r)));
   }
 
-  stops.push(() => queue.close(), () => redis.quit(), () => db.$disconnect());
+  if (bullQueue && redis) stops.push(() => bullQueue.queue.close(), () => redis.quit());
+  stops.push(() => db.$disconnect());
 
   let stopping = false;
   const shutdown = async (signal: string) => {

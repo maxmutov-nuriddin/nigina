@@ -79,6 +79,9 @@ npm run build && npm start   # yoki: npm run dev
 ### Webhook rejimi
 `BOT_MODE=webhook`, `WEBHOOK_URL=https://domen/telegram/webhook`, `WEBHOOK_SECRET=<tasodifiy>`. Ilova `WEBHOOK_PORT`da tinglaydi, `X-Telegram-Bot-Api-Secret-Token` sarlavhasini tekshiradi (grammY `secretToken`), `/health` endpoint bor.
 
+### Redis'siz rejim (Render va boshqa oddiy hosting)
+`REDIS_URL` bo'sh bo'lsa, prezentatsiya navbati jarayon ichida ishlaydi (3 urinish, backoff, parallellik cheklovi, dublikat himoyasi; yarim qolgan ishlar restartda va sweeper orqali qayta navbatga qo'yiladi). Bu faqat `APP_ROLE=all` (bitta jarayon) uchun; bot/worker alohida yoki bir nechta nusxa bo'lsa — Redis kerak.
+
 ### Uptime monitoring (health)
 Ilova har ikki rejimda `WEBHOOK_PORT` (8080) da HTTP ochadi:
 - `GET /health` — jarayon tirik (`200 ok`);
@@ -142,7 +145,7 @@ Aniqlashtirish faqat natijaga ta’sir qilganda: "soat sakkiz" (ertalab/kechquru
 ## Testlar
 
 ```bash
-npm test            # 96 test, alohida baza: nigina_test (TEST_DATABASE_URL bilan o'zgartirish mumkin)
+npm test            # 100 test, alohida baza: nigina_test (TEST_DATABASE_URL bilan o'zgartirish mumkin)
 npm run typecheck
 ```
 

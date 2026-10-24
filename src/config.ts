@@ -21,7 +21,8 @@ const EnvSchema = z.object({
   APP_ROLE: z.enum(["all", "bot", "worker"]).default("all"),
 
   DATABASE_URL: z.string().min(1),
-  REDIS_URL: z.string().default("redis://localhost:6379"),
+  /// Bo'sh — Redis'siz: prezentatsiya navbati jarayon ichida (faqat APP_ROLE=all). Bir nechta worker uchun Redis kerak
+  REDIS_URL: z.string().default(""),
 
   TELEGRAM_BOT_TOKEN: z.string().default(""),
   BOT_MODE: z.enum(["polling", "webhook"]).default("polling"),
