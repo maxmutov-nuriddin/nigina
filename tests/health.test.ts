@@ -54,3 +54,12 @@ describe("Health endpoint'lari (uptime monitor)", () => {
     expect((await fetch(`${base}/nimadir`)).status).toBe(404);
   });
 });
+
+describe("Vaqt mintaqasi (DB sessiyasi)", () => {
+  it("timestamptz server TimeZone'idan qat'i nazar to'g'ri yoziladi (Asia/Tashkent serverda 5 soat siljimaydi)", async () => {
+    const r = await db.aiUsageLog.create({ data: { kind: "tz-test", model: "x", latencyMs: 0, ok: true, createdAt: new Date("2026-10-24T12:00:00Z") } });
+    const raw = await db.$queryRaw<Array<{ utc: string }>>`SELECT to_char("createdAt" AT TIME ZONE 'UTC', 'HH24:MI') AS utc FROM "AiUsageLog" WHERE id = ${r.id}`;
+    await db.aiUsageLog.delete({ where: { id: r.id } });
+    expect(raw[0].utc).toBe("12:00");
+  });
+});
