@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 
-const TEST_DB = process.env.TEST_DATABASE_URL ?? "postgresql://nuriddin@localhost:5432/nigina_test?schema=public";
+const TEST_DB = process.env.TEST_DATABASE_URL ?? `postgresql://${process.env.USER}@localhost:5432/nigina_test?schema=public`;
 
 export default defineConfig({
   test: {
